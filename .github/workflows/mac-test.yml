@@ -3,14 +3,40 @@ on: workflow_dispatch
 jobs:
   test:
     runs-on: macos-latest
-    timeout-minutes: 60
+    timeout-minutes: 45
     steps:
-      - name: Remove preinstalled PowerShell (simulate a fresh Mac)
+      - name: 0 - Remove preinstalled PowerShell (simulate a fresh Mac)
         run: |
           sudo rm -rf /usr/local/bin/pwsh /usr/local/microsoft/powershell
           brew uninstall --cask powershell 2>/dev/null || true
-          which pwsh || echo "pwsh not found - clean slate"
-      - name: Open SSH session
-        uses: mxschmitt/action-tmate@v3
-        with:
-          limit-access-to-actor: true
+          if which pwsh; then echo "pwsh is still present"; exit 1; else echo "Clean slate - no PowerShell"; fi
+
+      - name: 1 - Check processor type
+        run: uname -m
+
+      - name: 2 - Download PowerShell
+        run: |
+          if [ "$(uname -m)" = "arm64" ]; then PKG=osx-arm64; else PKG=osx-x64; fi
+          curl -L -o /tmp/pwsh.pkg "https://github.com/PowerShell/PowerShell/releases/download/v7.6.6/powershell-7.6.6-$PKG.pkg"
+
+      - name: 3 - Install PowerShell
+        run: |
+          sudo installer -pkg /tmp/pwsh.pkg -target /
+          which pwsh
+
+      - name: 4 - Confirm PowerShell version
+        shell: pwsh
+        run: $PSVersionTable
+
+      - name: 5 - Install Microsoft Graph
+        shell: pwsh
+        run: |
+          Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
+          Install-Module Microsoft.Graph -Scope CurrentUser
+
+      - name: 6 - Verify Microsoft Graph
+        shell: pwsh
+        run: |
+          Get-InstalledModule Microsoft.Graph* | Select-Object Name, Version | Format-Table -AutoSize
+          Import-Module Microsoft.Graph.Authentication
+          Get-Command Connect-MgGraph
